@@ -8,6 +8,7 @@ from matplotlib.collections import PatchCollection
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon
 from scipy import ndimage as ndi
+from scipy.interpolate import interpn
 from scipy.spatial import KDTree, Voronoi
 from skimage import color
 
@@ -53,7 +54,7 @@ INIT_METHODS = {
 def get_mean_colors(points, image):
     """Get colors from the image at given points."""
     labels = points_to_label_image(points, width=image.shape[1], height=image.shape[0])
-    index = np.arange(np.max(labels) + 1)
+    index = np.arange(1, np.max(labels) + 1)
 
     colors = []
 
@@ -164,6 +165,16 @@ def collection_to_voronoi_image(collection, width, height, dpi=300):
     canvas.draw()
     values = np.asarray(canvas.buffer_rgba())[..., :3]
     return values / 255.0
+
+
+def colors_to_voronoi_image(values, labels, width, height):
+    """Convert values to a voronoi image."""
+    labels_flat = labels.flatten()
+    choice = labels_flat == np.arange(1, labels_flat.max() + 1).reshape(-1, 1)
+
+    choice_ = np.expand_dims(choice, axis=2)
+    values_ = np.expand_dims(values, axis=1)
+    return np.select(choice_, values_).reshape(height, width, 3)
 
 
 def points_to_label_image(points, width, height):
