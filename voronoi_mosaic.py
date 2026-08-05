@@ -3,17 +3,17 @@ import logging
 import click
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import PatchCollection
-from matplotlib.figure import Figure
 from matplotlib.patches import Polygon
-from scipy import ndimage as ndi
-from scipy.interpolate import interpn
 from scipy.spatial import KDTree, Voronoi
 from skimage import color
 
 RANDOM_STATE = np.random.RandomState(409239)
-MAX_VALUE = 1e6
+
+# The eight directions a Voronoi site is allowed to move into
+SHIFTS = np.array(
+    [[1, 0], [-1, 0], [1, 1], [-1, -1], [0, 1], [0, -1], [1, -1], [-1, 1]]
+)
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +23,7 @@ def voronoi_centers_random(image, n_points, random_state=RANDOM_STATE):
     """Sample points according to the image brightness."""
     pdf = image / image.sum()
     coords = random_state.choice(np.arange(image.size), p=pdf.ravel(), size=n_points)
-    x, y = np.unravel_index(coords, image.shape)
+    y, x = np.unravel_index(coords, image.shape)
     x = random_state.uniform(x - 0.5, x + 0.5)
     y = random_state.uniform(y - 0.5, y + 0.5)
     return np.column_stack((x.flatten(), y.flatten()))
@@ -33,15 +33,17 @@ def voronoi_centers_hex_grid(
     width, height, cell_size, jitter, random_state=RANDOM_STATE
 ):
     """Generate a grid of points for a hexagonal lattice."""
-    dy, dx = 2 * cell_size, cell_size / np.sqrt(3)
-    ratio = np.sqrt(3) / 2  # cos(60°)
-    y, x = np.meshgrid(np.arange(0, height / ratio, dy), np.arange(0, width, dx))
+    dx, dy = float(cell_size), cell_size * np.sqrt(3) / 2
 
-    y = y * ratio
-    y[::2, :] += cell_size * ratio
+    x, y = np.meshgrid(
+        np.arange(cell_size, width - cell_size, dx),
+        np.arange(cell_size, height - cell_size, dy),
+    )
 
-    x = x + random_state.uniform(-jitter, jitter, x.shape)
-    y = y + random_state.uniform(-jitter, jitter, y.shape)
+    x[1::2] += dx / 2  # offset every other row to obtain a hexagonal lattice
+
+    x = x + random_state.uniform(-jitter / 2, jitter / 2, x.shape)
+    y = y + random_state.uniform(-jitter / 2, jitter / 2, y.shape)
     return np.column_stack((x.flatten(), y.flatten()))
 
 
@@ -51,87 +53,72 @@ INIT_METHODS = {
 }
 
 
-def get_mean_colors(points, image):
-    """Get colors from the image at given points."""
-    labels = points_to_label_image(points, width=image.shape[1], height=image.shape[0])
-    index = np.arange(1, np.max(labels) + 1)
-
-    colors = []
-
-    for channel in range(image.shape[2]):
-        mean = ndi.mean(image[:, :, channel], labels=labels, index=index)
-        colors.append(mean)
-
-    return np.column_stack(colors)
-
-
 def get_colors(points, image):
-    """Get colors"""
+    """Get the image color at the position of each point."""
     x_idx = np.clip(points[:, 0].astype(int), 0, image.shape[1] - 1)
     y_idx = np.clip(points[:, 1].astype(int), 0, image.shape[0] - 1)
     return image[y_idx, x_idx]
 
 
 def get_voronoi_tesselation(points):
-    """Get Voronoi tessellation for given points."""
-    points_vor = np.append(
-        points,
-        [
-            [MAX_VALUE, MAX_VALUE],
-            [-MAX_VALUE, MAX_VALUE],
-            [MAX_VALUE, -MAX_VALUE],
-            [-MAX_VALUE, -MAX_VALUE],
-        ],
-        axis=0,
-    )
-    voronoi = Voronoi(points_vor, qhull_options="Qbb Qc Qx")
-    return voronoi
+    """Get Voronoi tessellation for given points.
+
+    Four far away points are added, such that all cells of the actual points are
+    bounded. They are placed relative to the extent of the points, to not degrade
+    the numerical precision of the tessellation.
+    """
+    offset = 10 * np.ptp(points, axis=0)
+    corners = np.array([[1, 1], [-1, 1], [1, -1], [-1, -1]])
+
+    points_vor = np.append(points, points.mean(axis=0) + corners * offset, axis=0)
+    return Voronoi(points_vor, qhull_options="Qbb Qc")
 
 
-def optimize_voronoi_cells(image, points, niter=5, error_threshold=0.1):
-    """Optimize Voronoi cells to better fit the image."""
-    width, height = image.shape[1], image.shape[0]
+def optimize_voronoi_cells(image, points, niter=5):
+    """Optimize Voronoi cells to better fit the image.
 
-    shifts = np.array(
-        [[1, 0], [-1, 0], [1, 1], [-1, -1], [0, 1], [0, -1], [1, -1], [-1, 1]]
-    )
+    Each site is moved by one pixel into the direction which reduces the color
+    error most. For a given direction the error is only evaluated on the pixels
+    along the boundary between two cells, because those are the pixels which
+    change ownership when either of the two sites moves: moving both the site of
+    the cell in the direction of the shift and the site of the cell opposite to
+    it hands the boundary pixels over to the latter.
+    """
+    height, width = image.shape[0], image.shape[1]
 
-    index = np.arange(len(points)) + 1
-
-    image_padded = np.pad(image, ((1, 1), (1, 1), (0, 0)), mode="reflect")
+    index = np.arange(len(points))
+    inner = (slice(1, -1), slice(1, -1))
 
     for idx in range(niter):
         labels = points_to_label_image(points, width=width, height=height)
-        colors = np.nan_to_num(get_colors(points, image))
-        vor = get_voronoi_tesselation(points)
-        collection = cells_to_collection(vor, colors, outline_color="none")
-        image_voronoi = collection_to_voronoi_image(
-            collection, width=width, height=height
-        )
+        colors = get_colors(points, image)
 
-        error_null = ndi.sum(
-            np.square(image_voronoi - image), labels=labels[..., None], index=index
-        )
+        image_voronoi = colors_to_voronoi_image(colors, labels)
+        error_null = np.square(image_voronoi - image).sum(axis=-1)
 
         log.info(f"Iteration {idx + 1}/{niter}, error: {error_null.sum():.2f}")
 
-        errors = []
+        errors = np.zeros((len(SHIFTS), len(points)))
 
-        for shift in shifts:
-            dx, dy = shift[1], shift[0]
-            shifted = image_padded[1 + dy : 1 + height + dy, 1 + dx : 1 + width + dx]
-            error = ndi.sum(
-                np.square(image_voronoi - shifted),
-                labels=labels[..., None],
-                index=index,
-            )
-            errors.append(error_null - error)
+        for idx_shift, (dx, dy) in enumerate(SHIFTS):
+            neighbor = labels[1 + dy : height - 1 + dy, 1 + dx : width - 1 + dx]
+            opposite = labels[1 - dy : height - 1 - dy, 1 - dx : width - 1 - dx]
 
-        errors = np.array(errors)
+            is_boundary = neighbor != opposite
 
-        mask = (errors >= error_threshold).any(axis=0)
+            error = np.square(colors[opposite] - image[inner]).sum(axis=-1)
+            delta = (error - error_null[inner])[is_boundary]
 
-        points[mask] += shifts[np.argmax(errors, axis=0)[mask]]
+            for labels_shifted in [neighbor, opposite]:
+                errors[idx_shift] += np.bincount(
+                    labels_shifted[is_boundary], weights=delta, minlength=len(points)
+                )
+
+        idx_best = np.argmin(errors, axis=0)
+        is_improved = errors[idx_best, index] < 0
+
+        points[is_improved] += SHIFTS[idx_best[is_improved]]
+        np.clip(points, 0, [width - 1, height - 1], out=points)
 
     return points
 
@@ -141,48 +128,35 @@ def cells_to_collection(vor, colors, outline_color, lw=0.5):
     # TODO: add smoothing of the Voronoi cells, e.g.
     # https://stackoverflow.com/a/69247177/19802442 and https://stackoverflow.com/a/72099748/19802442
 
-    patches = []
+    patches, face_colors = [], []
 
-    for idx, region_idx in enumerate(vor.point_region):
-        region = vor.regions[region_idx]
-        if -1 not in region:
-            polygon = Polygon([vor.vertices[_] for _ in region])
-            patches.append(polygon)
+    for idx, idx_region in enumerate(vor.point_region[: len(colors)]):
+        region = vor.regions[idx_region]
 
-    return PatchCollection(patches, fc=colors, ec=outline_color, lw=lw)
+        if -1 in region or len(region) < 3:
+            continue
 
+        patches.append(Polygon(vor.vertices[region]))
+        face_colors.append(colors[idx])
 
-def collection_to_voronoi_image(collection, width, height, dpi=300):
-    """Convert a PatchCollection to a label image."""
-    fig = Figure(figsize=(width / dpi, height / dpi), dpi=dpi)
-    canvas = FigureCanvasAgg(fig)
+    if outline_color == "none":
+        # avoid white seams between the cells from antialiasing
+        outline_color = face_colors
 
-    ax = fig.add_axes([0, 0, 1, 1])
-    ax.add_collection(collection)
-    ax.set_xlim(0, width)
-    ax.set_ylim(height, 0)
-    ax.axis("off")
-    canvas.draw()
-    values = np.asarray(canvas.buffer_rgba())[..., :3]
-    return values / 255.0
+    return PatchCollection(patches, fc=face_colors, ec=outline_color, lw=lw)
 
 
-def colors_to_voronoi_image(values, labels, width, height):
-    """Convert values to a voronoi image."""
-    labels_flat = labels.flatten()
-    choice = labels_flat == np.arange(1, labels_flat.max() + 1).reshape(-1, 1)
-
-    choice_ = np.expand_dims(choice, axis=2)
-    values_ = np.expand_dims(values, axis=1)
-    return np.select(choice_, values_).reshape(height, width, 3)
+def colors_to_voronoi_image(values, labels):
+    """Convert per cell values to a voronoi image."""
+    return values[labels]
 
 
 def points_to_label_image(points, width, height):
     """Convert points to a label image using a KDTree."""
     tree = KDTree(points)
     y, x = np.mgrid[0:height, 0:width]
-    _, labels = tree.query(np.column_stack((x.ravel(), y.ravel())), k=1)
-    return labels.reshape((height, width)) + 1
+    _, labels = tree.query(np.column_stack((x.ravel(), y.ravel())), k=1, workers=-1)
+    return labels.reshape((height, width))
 
 
 def plot_voronoi_mosaic(voronoi, image, dpi, colors, outline_color):
@@ -234,7 +208,10 @@ def cli(
 ):
     """Create a Voronoi mosaic from an image."""
     log.info(f"Read image from {image_path}")
-    image = plt.imread(image_path)[:, :, :3] / 255.0
+    image = plt.imread(image_path)[:, :, :3]
+
+    if image.dtype == np.uint8:
+        image = image / 255.0
 
     height, width, _ = image.shape
 
