@@ -36,11 +36,11 @@ The same command is available as a module entry point:
 python -m voronoi_mosaic example-images/butterfly.jpg --output-path example-images/butterfly-mosaic.jpg
 ```
 
-The example mosaic shown above was created with this command, using the default parameters.
+The example mosaic shown above was created with the default parameters.
 
 To get help on the parameters:
 ```bash
-python voronoi_mosaic.py --help
+voronoi-mosaic --help
 ```
 
 ## Parameters
@@ -65,6 +65,13 @@ For `cellsize` values much above the default, `niter` should be increased accord
 
 The output image has the same pixel size as the input image, up to rounding, independent of `dpi`.
 Since line widths are given in points, `dpi` controls how thick the cell outlines appear.
+
+## Development
+
+To run the tests:
+```bash
+uv run pytest
+```
 
 
 
