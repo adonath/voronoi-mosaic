@@ -12,11 +12,28 @@ You can use it to create mosaics like this:
 
 
 
+## Installation
+
+To install the package:
+```bash
+pip install .
+```
+
+Or to install it as a standalone command line tool:
+```bash
+uv tool install .
+```
+
 ## Usage
 
-To run the script:
+Once installed, the mosaic can be created with:
 ```bash
-python voronoi_mosaic.py example-images/butterfly.jpg --output-path example-images/butterfly-mosaic.jpg
+voronoi-mosaic example-images/butterfly.jpg --output-path example-images/butterfly-mosaic.jpg
+```
+
+The same command is available as a module entry point:
+```bash
+python -m voronoi_mosaic example-images/butterfly.jpg --output-path example-images/butterfly-mosaic.jpg
 ```
 
 The example mosaic shown above was created with this command, using the default parameters.
