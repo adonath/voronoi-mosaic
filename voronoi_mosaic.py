@@ -175,13 +175,16 @@ def plot_voronoi_mosaic(voronoi, image, dpi, colors, outline_color):
     ax.axis("off")
 
 
-@click.command()
+@click.command(context_settings={"show_default": True})
 @click.argument("image-path", type=click.Path(exists=True))
 @click.option(
-    "--init-method", type=click.Choice(list(INIT_METHODS.keys())), default="hex-grid"
+    "--init-method",
+    type=click.Choice(list(INIT_METHODS.keys())),
+    default="hex-grid",
+    help="Method to place the initial Voronoi cell centers.",
 )
-@click.option("--cellsize", default=15, help="Size of each Voronoi cell.")
-@click.option("--jitter", default=5, help="Jitter to apply to the Voronoi points.")
+@click.option("--cellsize", default=15, help="Average diameter of a Voronoi cell.")
+@click.option("--jitter", default=5, help="Width of the jitter applied to the lattice.")
 @click.option("--npoints", default=1000, help="Number of Voronoi points.")
 @click.option(
     "--niter", default=10, help="Number of Voronoi cell refinement iterations"
