@@ -1,5 +1,7 @@
 # Image Mosaic Generator using Voronoi Tesellation
 
+[![CI](https://github.com/adonath/voronoi-mosaic/actions/workflows/ci.yml/badge.svg)](https://github.com/adonath/voronoi-mosaic/actions/workflows/ci.yml)
+
 This repository implements a method to create image mosaics using Voronoi tessellation proposed by Yoshinori Dobashi and Toshiyuki Haga, Henry Johan,
 and Tomoyuki Nishita (Eurographics Short Presentations, 2002, DOI: 10.2312/egs.20021036).
 
