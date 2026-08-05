@@ -1,0 +1,33 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # the release is irreversible, so it runs through an environment, which can
+    # require a manual approval
+    environment: pypi
+    permissions:
+      # required to authenticate against PyPI through trusted publishing
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Check the release tag against the project version
+        run: |
+          version="$(uv version --short)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "${version}" != "${tag}" ]; then
+            echo "::error::release tag ${GITHUB_REF_NAME} does not match project version ${version}"
+            exit 1
+          fi
+
+      - run: uv run --frozen pytest
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@v1.14.2

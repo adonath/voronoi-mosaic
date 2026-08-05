@@ -75,6 +75,16 @@ To run the tests:
 uv run pytest
 ```
 
+### Releasing
+
+Publishing a release on GitHub builds the package and uploads it to PyPI.
+The release tag has to match the version in `pyproject.toml`, written as `v0.1.0` or `0.1.0`, otherwise the workflow stops before the upload.
+
+This requires a one time setup, as the workflow authenticates without a stored token:
+
+- a [trusted publisher](https://docs.pypi.org/trusted-publishers/) for this repository on PyPI, with `publish.yml` as the workflow and `pypi` as the environment
+- an environment named `pypi` in the repository settings, which is also the place to require a manual approval before the upload
+
 
 
 
