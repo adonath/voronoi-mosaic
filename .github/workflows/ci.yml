@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
-      - run: uv run pytest
+      - run: uv run --frozen pytest
 
   lint:
     runs-on: ubuntu-latest
