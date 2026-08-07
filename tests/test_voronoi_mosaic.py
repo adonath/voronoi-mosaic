@@ -8,13 +8,18 @@ from voronoi_mosaic import (
     cells_to_collection,
     cli,
     colors_to_voronoi_image,
+    drop_repeated_vertices,
     get_colors,
     get_voronoi_tesselation,
     optimize_voronoi_cells,
     points_to_label_image,
+    round_polygon,
+    shrink_polygon,
     voronoi_centers_hex_grid,
     voronoi_centers_random,
 )
+
+SQUARE = np.array([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]])
 
 # a non square shape, such that transposed x and y coordinates are caught
 HEIGHT, WIDTH = 12, 30
@@ -181,6 +186,111 @@ def test_cells_to_collection_coincident_points():
     assert len(collection.get_paths()) == len(collection.get_facecolor())
 
 
+def test_drop_repeated_vertices():
+    polygon = np.array([[0.0, 0.0], [0.0, 0.0], [10.0, 0.0], [5.0, 5.0]])
+
+    assert_allclose(
+        drop_repeated_vertices(polygon), [[0.0, 0.0], [10.0, 0.0], [5.0, 5.0]]
+    )
+
+
+def test_drop_repeated_vertices_wraps_around():
+    polygon = np.array([[0.0, 0.0], [10.0, 0.0], [5.0, 5.0], [0.0, 0.0]])
+
+    # the first and the last vertex are neighbors, too
+    assert_allclose(
+        drop_repeated_vertices(polygon), [[10.0, 0.0], [5.0, 5.0], [0.0, 0.0]]
+    )
+
+
+def test_shrink_polygon():
+    center = np.array([5.0, 5.0])
+
+    shrunk = shrink_polygon(SQUARE, pad=1.0)
+
+    # each vertex moves by pad towards the center, which is left in place
+    assert_allclose(
+        np.linalg.norm(shrunk - center, axis=1),
+        np.linalg.norm(SQUARE - center, axis=1) - 1.0,
+    )
+    assert_allclose(shrunk.mean(axis=0), center)
+
+
+def test_shrink_polygon_large_pad_collapses():
+    shrunk = shrink_polygon(SQUARE, pad=1000.0)
+
+    # the polygon collapses onto its center instead of turning inside out
+    assert_allclose(shrunk, np.full((4, 2), 5.0))
+
+
+def test_round_polygon_zero_radius_keeps_polygon():
+    path = round_polygon(SQUARE, radius=0.0)
+
+    # all path vertices collapse onto the corners of the polygon
+    assert_allclose(np.unique(path.vertices, axis=0), np.unique(SQUARE, axis=0))
+
+
+def test_round_polygon_cuts_corners():
+    path = round_polygon(SQUARE, radius=3.0)
+
+    assert path.contains_point((5.0, 5.0))
+
+    for corner in SQUARE:
+        # the corner itself is cut away
+        assert not path.contains_point(corner + 0.2 * np.sign(5.0 - corner))
+
+    for midpoint in [(5.0, 0.1), (9.9, 5.0), (5.0, 9.9), (0.1, 5.0)]:
+        # while the middle of each edge stays where it was
+        assert path.contains_point(midpoint)
+
+
+def test_round_polygon_radius_limited_to_half_edge():
+    # the cut is limited to half an edge, so that the corners cannot overlap
+    assert_allclose(
+        round_polygon(SQUARE, radius=1000.0).vertices,
+        round_polygon(SQUARE, radius=5.0).vertices,
+    )
+
+
+def test_cells_to_collection_pad_and_radius():
+    random_state = np.random.RandomState(0)
+    points = random_state.uniform(0, 50, size=(16, 2))
+    colors = random_state.uniform(0, 1, size=(16, 3))
+    vor = get_voronoi_tesselation(points)
+
+    plain = cells_to_collection(vor, colors, outline_color="black")
+    rounded = cells_to_collection(
+        vor, colors, outline_color="black", pad=1.0, radius=1.0
+    )
+
+    assert len(rounded.get_paths()) == len(plain.get_paths())
+
+    for path_plain, path_rounded in zip(plain.get_paths(), rounded.get_paths()):
+        # the padded cell is strictly smaller than the cell it was cut from
+        size_plain, size_rounded = (
+            path_plain.get_extents().size,
+            path_rounded.get_extents().size,
+        )
+        assert np.all(size_rounded < size_plain)
+
+
+def test_cells_to_collection_grid_sites():
+    """A regular grid is cocircular and yields cells with repeated vertices."""
+    x, y = np.meshgrid(np.arange(8.0), np.arange(8.0))
+    points = np.column_stack((x.ravel(), y.ravel()))
+
+    collection = cells_to_collection(
+        get_voronoi_tesselation(points),
+        np.zeros((len(points), 3)),
+        outline_color="black",
+        pad=0.1,
+        radius=0.1,
+    )
+
+    vertices = np.concatenate([path.vertices for path in collection.get_paths()])
+    assert np.isfinite(vertices).all()
+
+
 @pytest.mark.parametrize("axis", [0, 1])
 def test_optimize_moves_boundary_onto_image_edge(axis):
     size, edge = 40, 20
@@ -255,3 +365,39 @@ def test_cli(tmp_path, init_method):
     assert path_output.exists()
     # the mosaic keeps the size of the input image, up to rounding
     assert_allclose(plt.imread(path_output).shape[:2], (HEIGHT, WIDTH), atol=1)
+
+
+@pytest.mark.parametrize("background_color", ["white", "black"])
+def test_cli_rounded(tmp_path, background_color):
+    image = np.random.RandomState(0).uniform(0.4, 0.6, size=(HEIGHT, WIDTH, 3))
+
+    path_input = tmp_path / "input.png"
+    path_output = tmp_path / f"mosaic-{background_color}.png"
+    plt.imsave(path_input, image)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            str(path_input),
+            "--cellsize",
+            "4",
+            "--niter",
+            "2",
+            "--pad",
+            "0.5",
+            "--radius",
+            "1.0",
+            "--background-color",
+            background_color,
+            "--output-path",
+            str(path_output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+
+    mosaic = plt.imread(path_output)[..., :3]
+
+    # no cell can be brighter than the input image, so any brighter pixel has
+    # to come from the background showing through the gaps opened by the padding
+    assert (mosaic.max() > 0.6) == (background_color == "white")

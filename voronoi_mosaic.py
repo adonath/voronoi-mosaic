@@ -4,7 +4,8 @@ import click
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import PatchCollection
-from matplotlib.patches import Polygon
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path
 from scipy.spatial import KDTree, Voronoi
 from skimage import color
 
@@ -123,11 +124,66 @@ def optimize_voronoi_cells(image, points, niter=5):
     return points
 
 
-def cells_to_collection(vor, colors, outline_color, lw=0.5):
-    """Convert Voronoi cells to a matplotlib PatchCollection."""
-    # TODO: add smoothing of the Voronoi cells, e.g.
-    # https://stackoverflow.com/a/69247177/19802442 and https://stackoverflow.com/a/72099748/19802442
+def drop_repeated_vertices(polygon):
+    """Drop vertices which coincide with their predecessor.
 
+    Cocircular sites, such as the ones of a regular grid, yield cells with
+    repeated vertices. Those have no well defined edge direction and would
+    also bias the center used to shrink the cell.
+    """
+    is_repeated = np.all(np.isclose(polygon, np.roll(polygon, 1, axis=0)), axis=1)
+    return polygon[~is_repeated]
+
+
+def shrink_polygon(polygon, pad):
+    """Shrink a polygon by moving each vertex by ``pad`` towards its center.
+
+    This is not a true polygon offset, but it is enough to open up a gap of
+    roughly ``pad`` between neighboring cells. Vertices are never moved past
+    the center, so the polygon cannot turn inside out for a large ``pad``.
+    """
+    center = polygon.mean(axis=0)
+    vectors = polygon - center
+    distance = np.linalg.norm(vectors, axis=1, keepdims=True)
+    return center + np.maximum(distance - pad, 0) * vectors / distance
+
+
+def round_polygon(polygon, radius):
+    """Convert a polygon to a path with rounded corners.
+
+    Each corner is cut back by ``radius`` along both of its edges and the two
+    resulting points are joined by a quadratic Bezier curve with the corner
+    itself as control point. The cut is limited to half an edge length, so
+    that the two corners of an edge cannot overlap.
+
+    Adapted from https://stackoverflow.com/a/72099748, CC BY-SA 4.0.
+    """
+    n = len(polygon)
+
+    next_ = np.roll(polygon, -1, axis=0)
+    edges = next_ - polygon
+    lengths = np.linalg.norm(edges, axis=1, keepdims=True)
+    offsets = np.minimum(radius, 0.5 * lengths) * edges / lengths
+
+    # start and end of the straight part of each edge
+    start, end = polygon + offsets, next_ - offsets
+
+    verts = np.empty((3 * n + 1, 2))
+    verts[0] = start[0]
+    verts[1::3] = end
+    verts[2::3] = next_
+    verts[3::3] = np.roll(start, -1, axis=0)
+
+    codes = [Path.MOVETO] + n * [Path.LINETO, Path.CURVE3, Path.CURVE3]
+    return Path(verts, codes)
+
+
+def cells_to_collection(vor, colors, outline_color, pad=0.0, radius=0.0, lw=0.5):
+    """Convert Voronoi cells to a matplotlib PatchCollection.
+
+    Each cell is first shrunk by ``pad`` pixels and its corners are then
+    rounded with a radius of ``radius`` pixels.
+    """
     patches, face_colors = [], []
 
     for idx, idx_region in enumerate(vor.point_region[: len(colors)]):
@@ -136,7 +192,16 @@ def cells_to_collection(vor, colors, outline_color, lw=0.5):
         if -1 in region or len(region) < 3:
             continue
 
-        patches.append(Polygon(vor.vertices[region]))
+        polygon = drop_repeated_vertices(vor.vertices[region])
+
+        if pad > 0:
+            # a pad larger than the cell radius collapses the cell onto its center
+            polygon = drop_repeated_vertices(shrink_polygon(polygon, pad=pad))
+
+        if len(polygon) < 3:
+            continue
+
+        patches.append(PathPatch(round_polygon(polygon, radius=radius)))
         face_colors.append(colors[idx])
 
     if outline_color == "none":
@@ -159,15 +224,22 @@ def points_to_label_image(points, width, height):
     return labels.reshape((height, width))
 
 
-def plot_voronoi_mosaic(voronoi, image, dpi, colors, outline_color):
+def plot_voronoi_mosaic(
+    voronoi, image, dpi, colors, outline_color, background_color, pad, radius
+):
     """Plot the Voronoi mosaic."""
     width, height = image.shape[1], image.shape[0]
 
-    fig = plt.figure(figsize=(width / dpi, height / dpi))
+    fig = plt.figure(figsize=(width / dpi, height / dpi), facecolor=background_color)
     ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
 
     collection = cells_to_collection(
-        vor=voronoi, colors=colors, outline_color=outline_color, lw=0.1
+        vor=voronoi,
+        colors=colors,
+        outline_color=outline_color,
+        pad=pad,
+        radius=radius,
+        lw=0.1,
     )
     ax.add_collection(collection)
     ax.set_xlim(0, width)
@@ -194,6 +266,15 @@ def plot_voronoi_mosaic(voronoi, image, dpi, colors, outline_color):
     "--outline-color", default="black", help="Color of the Voronoi cell outlines."
 )
 @click.option(
+    "--background-color",
+    default="white",
+    help="Color shown in the gaps between the cells.",
+)
+@click.option("--pad", default=0.0, help="Distance in pixels each cell is shrunk by.")
+@click.option(
+    "--radius", default=0.0, help="Corner radius in pixels used to round the cells."
+)
+@click.option(
     "--output-path", default="mosaic.png", help="Path to save the output image."
 )
 @click.option("--dpi", default=300, help="DPI for the output image.")
@@ -206,6 +287,9 @@ def cli(
     niter,
     seed,
     outline_color,
+    background_color,
+    pad,
+    radius,
     output_path,
     dpi,
 ):
@@ -242,6 +326,9 @@ def cli(
         dpi=dpi,
         colors=colors,
         outline_color=outline_color,
+        background_color=background_color,
+        pad=pad,
+        radius=radius,
     )
 
     log.info(f"Saving output to {output_path}")

@@ -56,6 +56,9 @@ voronoi-mosaic --help
 | `--niter` | `10` | Number of optimization steps |
 | `--seed` | `0` | Random seed for reproducibility |
 | `--outline-color` | `black` | Any matplotlib color, or `none` to draw no outlines |
+| `--background-color` | `white` | Any matplotlib color, shown in the gaps between the cells |
+| `--pad` | `0.0` | Distance in pixels each cell is shrunk by, which opens up a gap between neighboring cells |
+| `--radius` | `0.0` | Corner radius in pixels used to round the cells |
 | `--output-path` | `mosaic.png` | Path to save the output image |
 | `--dpi` | `300` | Resolution used to render the mosaic |
 
@@ -64,6 +67,11 @@ The `random` method instead samples `npoints` centers from the image, with a pro
 
 Each optimization step moves every cell center by at most one pixel, so larger cells need more steps to settle.
 For `cellsize` values much above the default, `niter` should be increased accordingly.
+
+The `pad` and `radius` options turn the sharp cells into rounded pebbles.
+Each cell is first shrunk by `pad` towards its own center, which opens up a gap that shows the `background-color`, and its corners are then rounded with `radius`.
+Both are given in pixels and are best chosen relative to `cellsize`, for example a `pad` of `1.5` and a `radius` of `4` for the default `cellsize` of `15`.
+The rounding is limited to half an edge length, so a large `radius` turns small cells into ellipses rather than distorting them.
 
 The output image has the same pixel size as the input image, up to rounding, independent of `dpi`.
 Since line widths are given in points, `dpi` controls how thick the cell outlines appear.
