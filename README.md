@@ -76,6 +76,18 @@ The rounding is limited to half an edge length, so a large `radius` turns small 
 The output image has the same pixel size as the input image, up to rounding, independent of `dpi`.
 Since line widths are given in points, `dpi` controls how thick the cell outlines appear.
 
+## Web app
+
+A minimal web interface is available in [`app/`](app/), which exposes the same parameters as the command line tool.
+
+```bash
+uv run --group app python app/server.py
+```
+
+The mosaic is computed in the browser with [Pyodide](https://pyodide.org), which runs `voronoi_mosaic.py` itself, compiled to WebAssembly.
+The image never leaves the browser and nothing is stored anywhere, so the app can be deployed to any static host with `python app/build.py`.
+See the [app README](app/README.md) for the details.
+
 ## Development
 
 To run the tests:

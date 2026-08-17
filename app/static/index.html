@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voronoi Mosaic</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Voronoi Mosaic</h1>
+      <p class="lede">
+        Turn an image into a mosaic of Voronoi cells. Everything runs in your
+        browser, so the image never leaves your machine.
+      </p>
+    </header>
+
+    <main>
+      <form id="controls" autocomplete="off">
+        <fieldset>
+          <legend>Image</legend>
+
+          <label class="drop" id="drop">
+            <input type="file" id="file" accept="image/*" />
+            <span id="drop-label">Choose an image or drop one here</span>
+          </label>
+
+          <label>
+            Maximum size
+            <input type="number" id="maxsize" value="1200" min="64" max="4000" step="1" />
+            <small>
+              The long edge the image is scaled down to before it is processed.
+              Larger images take considerably longer.
+            </small>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Cells</legend>
+
+          <label>
+            Initial placement
+            <select id="init-method">
+              <option value="hex-grid" selected>Hexagonal grid</option>
+              <option value="random">Random, by brightness</option>
+            </select>
+          </label>
+
+          <label data-method="hex-grid">
+            Cell size
+            <input type="number" id="cellsize" value="15" min="2" step="1" />
+            <small>Average diameter of a cell, in pixels.</small>
+          </label>
+
+          <label data-method="hex-grid">
+            Jitter
+            <input type="number" id="jitter" value="5" min="0" step="1" />
+            <small>Width of the random offset applied to the lattice.</small>
+          </label>
+
+          <label data-method="random" hidden>
+            Number of cells
+            <input type="number" id="npoints" value="1000" min="4" step="1" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Optimization</legend>
+
+          <label>
+            Iterations
+            <input type="number" id="niter" value="10" min="0" step="1" />
+            <small>
+              Every step moves each cell by at most one pixel, so larger cells
+              need more steps to settle.
+            </small>
+          </label>
+
+          <label>
+            Seed
+            <input type="number" id="seed" value="0" step="1" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Style</legend>
+
+          <label>
+            Outline color
+            <input type="text" id="outline-color" value="black" list="colors" />
+            <small>Any matplotlib color, or <code>none</code> for no outlines.</small>
+          </label>
+
+          <label>
+            Background color
+            <input type="text" id="background-color" value="white" list="colors" />
+            <small>Shown in the gaps opened up by the padding.</small>
+          </label>
+
+          <label>
+            Padding
+            <input type="number" id="pad" value="0" min="0" step="0.5" />
+            <small>Distance each cell is shrunk by, in pixels.</small>
+          </label>
+
+          <label>
+            Corner radius
+            <input type="number" id="radius" value="0" min="0" step="0.5" />
+            <small>Rounds the cells into pebbles. Try a padding of 1.5 and a radius of 4.</small>
+          </label>
+
+          <label>
+            DPI
+            <input type="number" id="dpi" value="300" min="50" step="10" />
+            <small>Controls how thick the outlines appear, not the output size.</small>
+          </label>
+        </fieldset>
+
+        <datalist id="colors">
+          <option value="none"></option>
+          <option value="black"></option>
+          <option value="white"></option>
+          <option value="#222222"></option>
+          <option value="#f5f5f5"></option>
+        </datalist>
+
+        <button type="submit" id="run" disabled>Create mosaic</button>
+      </form>
+
+      <section id="output">
+        <div id="status" class="status" role="status" aria-live="polite">
+          Loading the Python runtime, this happens once.
+        </div>
+
+        <div class="preview">
+          <figure>
+            <figcaption>Input</figcaption>
+            <img id="preview-input" alt="" hidden />
+            <div class="placeholder" id="placeholder-input">No image chosen</div>
+          </figure>
+
+          <figure>
+            <figcaption>Mosaic</figcaption>
+            <img id="preview-output" alt="" hidden />
+            <div class="placeholder" id="placeholder-output">No mosaic yet</div>
+          </figure>
+        </div>
+
+        <a id="download" class="download" hidden download>Download the mosaic</a>
+      </section>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>

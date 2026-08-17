@@ -1,15 +1,18 @@
 import logging
 
 import click
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import PatchCollection
+from matplotlib.figure import Figure
+from matplotlib.image import imread
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from scipy.spatial import KDTree, Voronoi
-from skimage import color
 
 RANDOM_STATE = np.random.RandomState(409239)
+
+# Luminance weights calibrated for CRT phosphors, see http://poynton.ca/PDFs/ColorFAQ.pdf
+GREY_COEFFS = np.array([0.2125, 0.7154, 0.0721])
 
 # The eight directions a Voronoi site is allowed to move into
 SHIFTS = np.array(
@@ -18,6 +21,11 @@ SHIFTS = np.array(
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def rgb_to_grey(image):
+    """Compute the luminance of an RGB image."""
+    return image @ GREY_COEFFS
 
 
 def voronoi_centers_random(image, n_points, random_state=RANDOM_STATE):
@@ -48,10 +56,7 @@ def voronoi_centers_hex_grid(
     return np.column_stack((x.flatten(), y.flatten()))
 
 
-INIT_METHODS = {
-    "random": voronoi_centers_random,
-    "hex-grid": voronoi_centers_hex_grid,
-}
+INIT_METHODS = ("hex-grid", "random")
 
 
 def get_colors(points, image):
@@ -227,10 +232,15 @@ def points_to_label_image(points, width, height):
 def plot_voronoi_mosaic(
     voronoi, image, dpi, colors, outline_color, background_color, pad, radius
 ):
-    """Plot the Voronoi mosaic."""
+    """Plot the Voronoi mosaic and return the figure.
+
+    The figure is created directly, instead of through ``pyplot``, so that it
+    is not registered in the global figure manager. This keeps the rendering
+    free of global state and lets the caller decide when to drop the figure.
+    """
     width, height = image.shape[1], image.shape[0]
 
-    fig = plt.figure(figsize=(width / dpi, height / dpi), facecolor=background_color)
+    fig = Figure(figsize=(width / dpi, height / dpi), facecolor=background_color)
     ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
 
     collection = cells_to_collection(
@@ -245,13 +255,74 @@ def plot_voronoi_mosaic(
     ax.set_xlim(0, width)
     ax.set_ylim(height, 0)
     ax.axis("off")
+    return fig
+
+
+def as_float_rgb(image):
+    """Convert an image to RGB values in the range [0, 1], dropping any alpha."""
+    image = image[:, :, :3]
+
+    if image.dtype == np.uint8:
+        image = image / 255.0
+
+    return image
+
+
+def make_mosaic(
+    image,
+    init_method="hex-grid",
+    cellsize=15,
+    jitter=5,
+    npoints=1000,
+    niter=10,
+    seed=0,
+    outline_color="black",
+    background_color="white",
+    pad=0.0,
+    radius=0.0,
+    dpi=300,
+):
+    """Create the Voronoi mosaic of an image and return it as a figure.
+
+    ``image`` is expected as RGB values in the range [0, 1], as returned by
+    `as_float_rgb`. The parameters match the options of the command line tool.
+    """
+    height, width, _ = image.shape
+
+    random_state = np.random.RandomState(seed)
+
+    if init_method == "random":
+        centers = voronoi_centers_random(
+            image=rgb_to_grey(image), n_points=npoints, random_state=random_state
+        )
+    elif init_method == "hex-grid":
+        centers = voronoi_centers_hex_grid(
+            width, height, cell_size=cellsize, jitter=jitter, random_state=random_state
+        )
+    else:
+        raise ValueError(f"Unknown initialization method: '{init_method}'")
+
+    points = optimize_voronoi_cells(image=image, points=centers, niter=niter)
+    voronoi = get_voronoi_tesselation(points=points)
+    colors = get_colors(points=points, image=image)
+
+    return plot_voronoi_mosaic(
+        voronoi=voronoi,
+        image=image,
+        dpi=dpi,
+        colors=colors,
+        outline_color=outline_color,
+        background_color=background_color,
+        pad=pad,
+        radius=radius,
+    )
 
 
 @click.command(context_settings={"show_default": True})
 @click.argument("image-path", type=click.Path(exists=True))
 @click.option(
     "--init-method",
-    type=click.Choice(list(INIT_METHODS.keys())),
+    type=click.Choice(INIT_METHODS),
     default="hex-grid",
     help="Method to place the initial Voronoi cell centers.",
 )
@@ -295,44 +366,25 @@ def cli(
 ):
     """Create a Voronoi mosaic from an image."""
     log.info(f"Read image from {image_path}")
-    image = plt.imread(image_path)[:, :, :3]
+    image = as_float_rgb(imread(image_path))
 
-    if image.dtype == np.uint8:
-        image = image / 255.0
-
-    height, width, _ = image.shape
-
-    method = INIT_METHODS[init_method]
-
-    random_state = np.random.RandomState(seed)
-
-    if init_method == "random":
-        image_grey = color.rgb2gray(image)
-        centers = method(image=image_grey, n_points=npoints, random_state=random_state)
-    elif init_method == "hex-grid":
-        centers = method(
-            width, height, cell_size=cellsize, jitter=jitter, random_state=random_state
-        )
-    else:
-        raise ValueError(f"Unknown initialization method: '{init_method}'")
-
-    points = optimize_voronoi_cells(image=image, points=centers, niter=niter)
-    voronoi = get_voronoi_tesselation(points=points)
-    colors = get_colors(points=points, image=image)
-
-    plot_voronoi_mosaic(
-        voronoi=voronoi,
+    figure = make_mosaic(
         image=image,
-        dpi=dpi,
-        colors=colors,
+        init_method=init_method,
+        cellsize=cellsize,
+        jitter=jitter,
+        npoints=npoints,
+        niter=niter,
+        seed=seed,
         outline_color=outline_color,
         background_color=background_color,
         pad=pad,
         radius=radius,
+        dpi=dpi,
     )
 
     log.info(f"Saving output to {output_path}")
-    plt.savefig(output_path, dpi=dpi)
+    figure.savefig(output_path, dpi=dpi)
 
 
 if __name__ == "__main__":

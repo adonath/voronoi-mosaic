@@ -13,6 +13,7 @@ from voronoi_mosaic import (
     get_voronoi_tesselation,
     optimize_voronoi_cells,
     points_to_label_image,
+    rgb_to_grey,
     round_polygon,
     shrink_polygon,
     voronoi_centers_hex_grid,
@@ -73,6 +74,20 @@ def test_hex_grid_jitter_bounded():
 
     # each center is displaced by at most half the jitter value
     assert np.all(np.abs(centers_jitter - centers) <= 2)
+
+
+def test_rgb_to_grey():
+    image = np.zeros((HEIGHT, WIDTH, 3))
+    image[0, 0] = [1.0, 1.0, 1.0]
+    image[0, 1] = [0.0, 1.0, 0.0]
+
+    grey = rgb_to_grey(image)
+
+    assert grey.shape == (HEIGHT, WIDTH)
+    # white keeps its brightness, while green carries most of the luminance
+    assert_allclose(grey[0, 0], 1.0)
+    assert_allclose(grey[0, 1], 0.7154)
+    assert_allclose(grey[1, 1], 0.0)
 
 
 def test_random_centers():
