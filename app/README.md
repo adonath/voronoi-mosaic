@@ -19,8 +19,11 @@ It serves `voronoi_mosaic.py` from the repository root, so any edit to the algor
 ## Deploying it
 
 There is no backend to deploy.
-Every push to `main` publishes the app to <https://adonath.github.io/voronoi-mosaic/> through the [`pages.yml`](../.github/workflows/pages.yml) workflow, which runs the build below and uploads the result to GitHub Pages.
-The workflow enables the Pages site on its first run, so the only prerequisite is that the repository is public.
+Every push to `main` publishes the app to <https://axeldonath.com/voronoi-mosaic/> through the [`pages.yml`](../.github/workflows/pages.yml) workflow, which runs the build below and uploads the result to GitHub Pages.
+
+This needed a one time setup, because the `GITHUB_TOKEN` of a workflow cannot create a Pages site itself:
+Pages has to be enabled once under Settings, with `GitHub Actions` as the source.
+The app is served under the custom domain of the user site rather than under `adonath.github.io`, which redirects there.
 
 To assemble the same folder for any other static host:
 

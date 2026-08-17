@@ -24,10 +24,6 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/configure-pages@v6
-        # create the Pages site on the first run, so that no manual setup is needed
-        with:
-          enablement: true
       # the build only copies files around, so it needs nothing but the standard library
       - run: python3 app/build.py
       - uses: actions/upload-pages-artifact@v5

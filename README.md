@@ -3,7 +3,7 @@
 [![CI](https://github.com/adonath/voronoi-mosaic/actions/workflows/ci.yml/badge.svg)](https://github.com/adonath/voronoi-mosaic/actions/workflows/ci.yml)
 [![Pages](https://github.com/adonath/voronoi-mosaic/actions/workflows/pages.yml/badge.svg)](https://github.com/adonath/voronoi-mosaic/actions/workflows/pages.yml)
 
-> ### [Try it in your browser →](https://adonath.github.io/voronoi-mosaic/)
+> ### [Try it in your browser →](https://axeldonath.com/voronoi-mosaic/)
 >
 > No installation needed. The mosaic is computed on your own machine, so the image never leaves your browser.
 
@@ -92,7 +92,7 @@ uv run --group app python app/server.py
 The mosaic is computed in the browser with [Pyodide](https://pyodide.org), which runs `voronoi_mosaic.py` itself, compiled to WebAssembly.
 The image never leaves the browser and nothing is stored anywhere.
 
-Every push to `main` deploys the app to <https://adonath.github.io/voronoi-mosaic/>, so the hosted version always runs the current algorithm.
+Every push to `main` deploys the app to <https://axeldonath.com/voronoi-mosaic/>, so the hosted version always runs the current algorithm.
 See the [app README](app/README.md) for the details.
 
 ## Development
