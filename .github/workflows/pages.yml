@@ -1,0 +1,37 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# a queued deployment waits for the running one, instead of replacing it
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy the web app
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+        # create the Pages site on the first run, so that no manual setup is needed
+        with:
+          enablement: true
+      # the build only copies files around, so it needs nothing but the standard library
+      - run: python3 app/build.py
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: app/dist
+      - id: deploy
+        uses: actions/deploy-pages@v5

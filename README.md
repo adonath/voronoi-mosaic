@@ -1,6 +1,11 @@
 # Image Mosaic Generator using Voronoi Tesellation
 
 [![CI](https://github.com/adonath/voronoi-mosaic/actions/workflows/ci.yml/badge.svg)](https://github.com/adonath/voronoi-mosaic/actions/workflows/ci.yml)
+[![Pages](https://github.com/adonath/voronoi-mosaic/actions/workflows/pages.yml/badge.svg)](https://github.com/adonath/voronoi-mosaic/actions/workflows/pages.yml)
+
+> ### [Try it in your browser →](https://adonath.github.io/voronoi-mosaic/)
+>
+> No installation needed. The mosaic is computed on your own machine, so the image never leaves your browser.
 
 This repository implements a method to create image mosaics using Voronoi tessellation proposed by Yoshinori Dobashi and Toshiyuki Haga, Henry Johan,
 and Tomoyuki Nishita (Eurographics Short Presentations, 2002, DOI: 10.2312/egs.20021036).
@@ -85,7 +90,9 @@ uv run --group app python app/server.py
 ```
 
 The mosaic is computed in the browser with [Pyodide](https://pyodide.org), which runs `voronoi_mosaic.py` itself, compiled to WebAssembly.
-The image never leaves the browser and nothing is stored anywhere, so the app can be deployed to any static host with `python app/build.py`.
+The image never leaves the browser and nothing is stored anywhere.
+
+Every push to `main` deploys the app to <https://adonath.github.io/voronoi-mosaic/>, so the hosted version always runs the current algorithm.
 See the [app README](app/README.md) for the details.
 
 ## Development

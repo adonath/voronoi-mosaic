@@ -19,13 +19,17 @@ It serves `voronoi_mosaic.py` from the repository root, so any edit to the algor
 ## Deploying it
 
 There is no backend to deploy.
-Assemble the site and upload the folder to any static host:
+Every push to `main` publishes the app to <https://adonath.github.io/voronoi-mosaic/> through the [`pages.yml`](../.github/workflows/pages.yml) workflow, which runs the build below and uploads the result to GitHub Pages.
+The workflow enables the Pages site on its first run, so the only prerequisite is that the repository is public.
+
+To assemble the same folder for any other static host:
 
 ```bash
 python app/build.py
 ```
 
 This writes `app/dist`, which contains the page, the worker and a copy of `voronoi_mosaic.py`.
+All of its URLs are relative, so it works both at the root of a domain and under a path such as `/voronoi-mosaic/`.
 
 ## How it works
 
